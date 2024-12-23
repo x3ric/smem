@@ -4,28 +4,34 @@
 
 ## Features
 
-- Attach to processes via `/proc/<pid>/mem`.
-- Read and write memory regions.
-- Scan memory for specific values or changes.
-- Interactive visualization of memory regions.
-- Advanced scanning modes:
-  - Exact match
-  - Value changed
-  - Value increased or decreased
-- Lock memory values to continuously update them.
-- Intuitive controls:
-  - **Right-click**: Copy memory address.
-  - **F1**: Attach to the PID.
-  - **F2**: Initiate a scan.
-  - **F3**: View previous scan results.
-  - **F4**: Reset scan settings.
-  - **F5**: Set target address.
-  - **F7**: Lock the current address.
-  - **F8**: Scan for changed values.
-  - **F9**: Scan for increased values.
-  - **F10**: Scan for decreased values.
-  - **F11**: Decrease visualization size (zoom out).
-  - **F12**: Increase visualization size (zoom in).
+**Memory Operations:**
+- **Attach/Detach**: Interface with process memory via `/proc/<pid>/mem`.
+- **Read/Write**: Modify and access memory regions directly.
+- **Visualization**: Dynamically display memory regions.
+
+**Scanning Functions:**
+- **Exact Match**: Search for exact numerical matches.
+- **Value Changes**: Track modifications in memory values.
+- **Trends**: Detect trends such as value increases or decreases.
+- **Continuous Monitoring**: Automatically update monitored values.
+
+**User Interface and Controls:**
+- **Clipboard Interaction**: Right-click to copy a memory address.
+- **Functional Keys**:
+  - **F1**: Connect to a process by its ID.
+  - **F2**: Commence a memory scan.
+  - **F3**: Access previous scan results.
+  - **F4**: Reset scanning configurations.
+  - **F5**: Target a specific memory address for operations.
+  - **F7**: Lock onto a memory address for ongoing updates.
+  - **F8-F10**: Activate scans for changes, increases, or decreases.
+  - **F11/F12**: Scale the visualization size up or down.
+
+**Input Value:**
+- **`b<value>`**: Parses the value as a byte.
+- **`0x<hex_value>`**: Interprets the value as a hexadecimal number.
+- **`d<decimal_value>`**: Treats the value as a double.
+- **`<value>`**: Assumes the value is an integer or float.
 
 ## Requirements
 

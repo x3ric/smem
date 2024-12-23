@@ -8,59 +8,79 @@ cat > /tmp/test.c << 'EOF'
 #include <readline/readline.h>
 #include <readline/history.h>
 
+#define STACK_SIZE 1024
+
+typedef struct {
+    int ivar;
+    float fvar;
+    double dvar;
+    unsigned char bvar;
+    char stack[STACK_SIZE];
+    int top;
+} REPLContext;
+
+void set_variable(REPLContext *ctx, const char *type, const char *value) {
+    if (strcmp(type, "int") == 0) {
+        sscanf(value, "%d", &ctx->ivar);
+    } else if (strcmp(type, "float") == 0) {
+        sscanf(value, "%f", &ctx->fvar);
+    } else if (strcmp(type, "double") == 0) {
+        sscanf(value, "%lf", &ctx->dvar);
+    } else if (strcmp(type, "byte") == 0) {
+        int temp;
+        sscanf(value, "%d", &temp);
+        ctx->bvar = (unsigned char)(temp & 0xFF);
+    }
+}
+
+void show_variable(REPLContext *ctx, const char *type) {
+    if (strcmp(type, "int") == 0) {
+        printf("%d\n", ctx->ivar);
+    } else if (strcmp(type, "float") == 0) {
+        printf("%.2f\n", ctx->fvar);
+    } else if (strcmp(type, "double") == 0) {
+        printf("%.2lf\n", ctx->dvar);
+    } else if (strcmp(type, "byte") == 0) {
+        printf("%u\n", ctx->bvar);
+    }
+}
+
+void display_help() {
+    printf(" Types:\n  int\n  byte\n  float\n  double\n");
+    printf(" Commands:\n");
+    printf("  exit               : Quit\n");
+    printf("  help               : Show this help message.\n");
+    printf("  show <type>        : Show a variable;\n");
+    printf("  set <type> <value> : Set a variable;\n");
+    printf("  pid                : Show the process pid.\n");
+}
+
 int main() {
-    int variable = 0;
-    float fvariable = 0.0;
-    double dvariable = 0.0;
-    char svariable[100] = "";
-    printf("PID -> %d.\n", getpid());
-    printf("REPL to set and show different types of variables.\n");
-    printf("Type 'help' for a list of commands.\n");
+    REPLContext ctx = {0, 0.0, 0.0, 0, {0}, 0};
     while (1) {
-        char *input = readline("\n> ");
-        if (!input) { // Handle EOF (Ctrl+D)
-            printf("\nExiting...\n");
-            break;
-        }
-        if (strlen(input) > 0) {
-            add_history(input);
-        }
-        if (strncmp(input, "help", 4) == 0) {
-            printf("Commands:\n");
-            printf("- 'setint <value>': Set the integer variable.\n");
-            printf("- 'setfloat <value>': Set the float variable.\n");
-            printf("- 'setdouble <value>': Set the double variable.\n");
-            printf("- 'setstring <string>': Set the string variable.\n");
-            printf("- 'showint': Display the current value of the integer variable.\n");
-            printf("- 'showfloat': Display the current value of the float variable.\n");
-            printf("- 'showdouble': Display the current value of the double variable.\n");
-            printf("- 'showstring': Display the current value of the string variable.\n");
-            printf("- 'exit': Quit the program.\n");
-        } else if (strncmp(input, "setint ", 7) == 0) {
-            sscanf(input + 7, "%d", &variable);
-            printf("Integer variable set to %d\n", variable);
-        } else if (strncmp(input, "setfloat ", 9) == 0) {
-            sscanf(input + 9, "%f", &fvariable);
-            printf("Float variable set to %f\n", fvariable);
-        } else if (strncmp(input, "setdouble ", 10) == 0) {
-            sscanf(input + 10, "%lf", &dvariable);
-            printf("Double variable set to %lf\n", dvariable);
-        } else if (strncmp(input, "setstring ", 10) == 0) {
-            sscanf(input + 10, "%99s", svariable);
-            printf("String variable set to %s\n", svariable);
-        } else if (strncmp(input, "showint", 7) == 0) {
-            printf("Current value of integer: %d\n", variable);
-        } else if (strncmp(input, "showfloat", 9) == 0) {
-            printf("Current value of float: %f\n", fvariable);
-        } else if (strncmp(input, "showdouble", 10) == 0) {
-            printf("Current value of double: %lf\n", dvariable);
-        } else if (strncmp(input, "showstring", 10) == 0) {
-            printf("Current string value: %s\n", svariable);
-        } else if (strncmp(input, "exit", 4) == 0) {
+        char *input = readline("> ");
+        if (!input) break;
+        if (*input) add_history(input);
+
+        if (strcmp(input, "help") == 0) {
+            display_help();
+        } else if (strcmp(input, "pid") == 0) {
+            printf("%d\n", getpid());
+        } else if (strncmp(input, "set ", 4) == 0) {
+            char type[10], value[50];
+            if (sscanf(input + 4, "%s %s", type, value) == 2) {
+                set_variable(&ctx, type, value);
+            }
+        } else if (strncmp(input, "show ", 5) == 0) {
+            char type[10];
+            if (sscanf(input + 5, "%s", type) == 1) {
+                show_variable(&ctx, type);
+            }
+        } else if (strcmp(input, "exit") == 0) {
             free(input);
             break;
         } else {
-            printf("Unknown command. Use 'help' for a list of commands.\n");
+            printf("Unknown command. Type 'help'.\n");
         }
         free(input);
     }

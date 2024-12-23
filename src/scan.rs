@@ -1,28 +1,40 @@
 use std::{
     collections::HashMap,
     error::Error,
-    fs::{File},
+    fs::File,
     io::{self, BufRead, BufReader, Read, Seek, SeekFrom, Write},
+    sync::{Arc, Mutex},
+    thread,
+    time::Duration,
 };
 
 use crate::types::{ValueType, MemoryRegion, RegionGroup};
 
 pub struct MemoryScanner {
-    pid: i32,
     mem_file: Option<File>,
+    pub is_attached: bool,
+    pub pid: i32,
+    err: Option<String>,
 }
 
 impl MemoryScanner {
     pub fn new(pid: i32) -> Self {
-        Self { pid, mem_file: None }
+        Self {
+            mem_file: None,
+            is_attached: false,
+            pid,
+            err: None,
+        }
     }
 
     pub fn attach(&mut self) -> io::Result<()> {
+        self.is_attached = true;
         self.mem_file = Some(File::options().read(true).write(true).open(format!("/proc/{}/mem", self.pid))?);
         Ok(())
     }
-    
+
     pub fn detach(&mut self) {
+        self.is_attached = false;
         self.mem_file = None;
     }
 
@@ -37,7 +49,7 @@ impl MemoryScanner {
         }
     }
 
-    pub fn set_memory(&mut self, addr: usize, value: &[u8]) -> io::Result<()> {
+    pub fn write_memory(&mut self, addr: usize, value: &[u8]) -> io::Result<()> {
         if let Some(ref mut file) = self.mem_file {
             file.seek(SeekFrom::Start(addr as u64))?;
             file.write_all(value)?;
