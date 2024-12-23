@@ -15,6 +15,15 @@
 - Lock memory values to continuously update them.
 - Intuitive controls:
   - **Right-click**: Copy memory address.
+  - **F1**: Attach to the PID.
+  - **F2**: Initiate a scan.
+  - **F3**: View previous scan results.
+  - **F4**: Reset scan settings.
+  - **F5**: Set target address.
+  - **F7**: Lock the current address.
+  - **F8**: Scan for changed values.
+  - **F9**: Scan for increased values.
+  - **F10**: Scan for decreased values.
   - **F11**: Decrease visualization size (zoom out).
   - **F12**: Increase visualization size (zoom in).
 
@@ -31,7 +40,7 @@ Clone the repository and run the application directly:
 ```bash
 git clone https://github.com/x3ric/smem.git
 cd smem
-sudo cargo run -- "$(pidof game)"
+sudo cargo run -- "$(pidof test | awk '{print $1}')"
 ```
 
 ![Image](./img.png)

@@ -1,5 +1,5 @@
 [package]
-name = "memvis"
+name = "smem"
 version = "0.0.1"
 edition = "2021"
 
@@ -8,3 +8,4 @@ eframe = "0.22"
 egui = "0.22"
 nix = "0.26"
 libc = "0.2"
+hex = "0.4"

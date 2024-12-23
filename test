@@ -1,0 +1,73 @@
+#!/bin/bash
+
+cat > /tmp/test.c << 'EOF'
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <readline/readline.h>
+#include <readline/history.h>
+
+int main() {
+    int variable = 0;
+    float fvariable = 0.0;
+    double dvariable = 0.0;
+    char svariable[100] = "";
+    printf("PID -> %d.\n", getpid());
+    printf("REPL to set and show different types of variables.\n");
+    printf("Type 'help' for a list of commands.\n");
+    while (1) {
+        char *input = readline("\n> ");
+        if (!input) { // Handle EOF (Ctrl+D)
+            printf("\nExiting...\n");
+            break;
+        }
+        if (strlen(input) > 0) {
+            add_history(input);
+        }
+        if (strncmp(input, "help", 4) == 0) {
+            printf("Commands:\n");
+            printf("- 'setint <value>': Set the integer variable.\n");
+            printf("- 'setfloat <value>': Set the float variable.\n");
+            printf("- 'setdouble <value>': Set the double variable.\n");
+            printf("- 'setstring <string>': Set the string variable.\n");
+            printf("- 'showint': Display the current value of the integer variable.\n");
+            printf("- 'showfloat': Display the current value of the float variable.\n");
+            printf("- 'showdouble': Display the current value of the double variable.\n");
+            printf("- 'showstring': Display the current value of the string variable.\n");
+            printf("- 'exit': Quit the program.\n");
+        } else if (strncmp(input, "setint ", 7) == 0) {
+            sscanf(input + 7, "%d", &variable);
+            printf("Integer variable set to %d\n", variable);
+        } else if (strncmp(input, "setfloat ", 9) == 0) {
+            sscanf(input + 9, "%f", &fvariable);
+            printf("Float variable set to %f\n", fvariable);
+        } else if (strncmp(input, "setdouble ", 10) == 0) {
+            sscanf(input + 10, "%lf", &dvariable);
+            printf("Double variable set to %lf\n", dvariable);
+        } else if (strncmp(input, "setstring ", 10) == 0) {
+            sscanf(input + 10, "%99s", svariable);
+            printf("String variable set to %s\n", svariable);
+        } else if (strncmp(input, "showint", 7) == 0) {
+            printf("Current value of integer: %d\n", variable);
+        } else if (strncmp(input, "showfloat", 9) == 0) {
+            printf("Current value of float: %f\n", fvariable);
+        } else if (strncmp(input, "showdouble", 10) == 0) {
+            printf("Current value of double: %lf\n", dvariable);
+        } else if (strncmp(input, "showstring", 10) == 0) {
+            printf("Current string value: %s\n", svariable);
+        } else if (strncmp(input, "exit", 4) == 0) {
+            free(input);
+            break;
+        } else {
+            printf("Unknown command. Use 'help' for a list of commands.\n");
+        }
+        free(input);
+    }
+    return 0;
+}
+EOF
+
+gcc /tmp/test.c -o /tmp/test -lreadline
+chmod +x /tmp/test
+/tmp/test
