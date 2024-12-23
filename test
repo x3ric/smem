@@ -30,11 +30,9 @@ int main() {
             printf("- 'setint <value>': Set the integer variable.\n");
             printf("- 'setfloat <value>': Set the float variable.\n");
             printf("- 'setdouble <value>': Set the double variable.\n");
-            printf("- 'setstring <string>': Set the string variable.\n");
             printf("- 'showint': Display the current value of the integer variable.\n");
             printf("- 'showfloat': Display the current value of the float variable.\n");
             printf("- 'showdouble': Display the current value of the double variable.\n");
-            printf("- 'showstring': Display the current value of the string variable.\n");
             printf("- 'exit': Quit the program.\n");
         } else if (strncmp(input, "setint ", 7) == 0) {
             sscanf(input + 7, "%d", &variable);
@@ -45,17 +43,12 @@ int main() {
         } else if (strncmp(input, "setdouble ", 10) == 0) {
             sscanf(input + 10, "%lf", &dvariable);
             printf("Double variable set to %lf\n", dvariable);
-        } else if (strncmp(input, "setstring ", 10) == 0) {
-            sscanf(input + 10, "%99s", svariable);
-            printf("String variable set to %s\n", svariable);
         } else if (strncmp(input, "showint", 7) == 0) {
             printf("Current value of integer: %d\n", variable);
         } else if (strncmp(input, "showfloat", 9) == 0) {
             printf("Current value of float: %f\n", fvariable);
         } else if (strncmp(input, "showdouble", 10) == 0) {
             printf("Current value of double: %lf\n", dvariable);
-        } else if (strncmp(input, "showstring", 10) == 0) {
-            printf("Current string value: %s\n", svariable);
         } else if (strncmp(input, "exit", 4) == 0) {
             free(input);
             break;

@@ -88,20 +88,40 @@ impl Smem {
     }
 
     fn first_scan(&mut self) -> Result<(), String> {
-        let val = parse_user_value(&self.scan_value).ok_or("Parse error")?;
-        let regs = self.get_target_regions();
-        if regs.is_empty() { return Err("No enabled region selected.".into()); }
+        let val = parse_user_value(&self.scan_value).ok_or("Failed to parse scan value.")?;
+        let scan_types = match val {
+            ValueType::Int(_) => vec![ValueType::Int(0), ValueType::Long(0)],
+            ValueType::Float(_) => vec![ValueType::Float(0.0), ValueType::Double(0.0)],
+            ValueType::Long(_) => vec![ValueType::Long(0), ValueType::Int(0)],
+            ValueType::Double(_) => vec![ValueType::Double(0.0), ValueType::Float(0.0)],
+        };
+        let regions = self.get_target_regions();
+        if regions.is_empty() {
+            return Err("No enabled memory regions selected.".into());
+        }
         let mut baseline = HashMap::new();
-        for r in regs {
-            if let Ok(buf) = self.scanner.lock().unwrap().read_memory(r.start, r.end.saturating_sub(r.start)) {
-                for (i, chunk) in buf.chunks(4).enumerate() {
-                    if chunk.len()==4 {
-                        let v = ValueType::from_bytes([chunk[0],chunk[1],chunk[2],chunk[3]], matches!(val, ValueType::Float(_)));
-                        let addr = r.start + i*4;
-                        if self.scan_mode=="Exact" {
-                            if v.equals(&val) { baseline.insert(addr, v); }
-                        } else {
-                            baseline.insert(addr, v);
+        for region in regions {
+            let memory_size = region.end.saturating_sub(region.start);
+            if let Ok(buffer) = self.scanner.lock().unwrap().read_memory(region.start, memory_size) {
+                for type_hint in &scan_types {
+                    let byte_size = match type_hint {
+                        ValueType::Int(_) | ValueType::Float(_) => 4,
+                        ValueType::Long(_) | ValueType::Double(_) => 8,
+                    };
+                    for i in 0..(buffer.len() / byte_size) {
+                        let chunk_start = i * byte_size;
+                        let chunk_end = chunk_start + byte_size;
+                        if chunk_end <= buffer.len() {
+                            let chunk = &buffer[chunk_start..chunk_end];
+                            let value = ValueType::from_bytes(chunk.to_vec(), *type_hint);
+                            let address = region.start + chunk_start;
+                            if self.scan_mode == "Exact" {
+                                if value.equals(&val) {
+                                    baseline.insert(address, value);
+                                }
+                            } else {
+                                baseline.insert(address, value);
+                            }
                         }
                     }
                 }
@@ -109,32 +129,44 @@ impl Smem {
         }
         self.scan_history.clear();
         self.scan_history.push(baseline.clone());
-        self.scan_results.clear();
-        self.scan_results.extend(baseline.keys().copied());
+        self.scan_results = baseline.keys().copied().collect();
         Ok(())
     }
 
     fn next_scan(&mut self) -> Result<(), String> {
-        if self.scan_history.is_empty() { return self.first_scan(); }
-        let val = parse_user_value(&self.scan_value).ok_or("Parse error")?;
+        if self.scan_history.is_empty() {
+            return self.first_scan();
+        }
+        let val = parse_user_value(&self.scan_value).ok_or("Failed to parse scan value.")?;
+        let scan_types = match val {
+            ValueType::Int(_) => vec![ValueType::Int(0), ValueType::Long(0)],
+            ValueType::Float(_) => vec![ValueType::Float(0.0), ValueType::Double(0.0)],
+            ValueType::Long(_) => vec![ValueType::Long(0), ValueType::Int(0)],
+            ValueType::Double(_) => vec![ValueType::Double(0.0), ValueType::Float(0.0)],
+        };
         let prev_map = self.scan_history.last().unwrap();
         let mut new_map = HashMap::new();
         for (&addr, old_val) in prev_map {
-            if let Ok(buf) = self.scanner.lock().unwrap().read_memory(addr, 4) {
-                if buf.len()==4 {
-                    let nv = ValueType::from_bytes([buf[0],buf[1],buf[2],buf[3]], matches!(val, ValueType::Float(_)));
-                    if self.comparator(old_val, &nv, &val) {
-                        new_map.insert(addr, nv);
+            for type_hint in &scan_types {
+                let byte_size = match type_hint {
+                    ValueType::Int(_) | ValueType::Float(_) => 4,
+                    ValueType::Long(_) | ValueType::Double(_) => 8,
+                };
+                if let Ok(buffer) = self.scanner.lock().unwrap().read_memory(addr, byte_size) {
+                    if buffer.len() == byte_size {
+                        let new_value = ValueType::from_bytes(buffer.to_vec(), *type_hint);
+                        if self.comparator(old_val, &new_value, &val) {
+                            new_map.insert(addr, new_value);
+                        }
                     }
                 }
             }
         }
         self.scan_history.push(new_map.clone());
-        self.scan_results.clear();
-        self.scan_results.extend(new_map.keys().copied());
+        self.scan_results = new_map.keys().copied().collect();
         Ok(())
     }
-
+    
     fn do_scan(&mut self) {
         let r = if self.scan_history.is_empty() { self.first_scan() } else { self.next_scan() };
         if let Err(e) = r { self.err = Some(e); }
@@ -163,7 +195,7 @@ impl Smem {
         };
         let bytes = val.to_bytes();
         for &addr in &self.scan_results {
-            match self.scanner.lock().unwrap().set_memory(addr, &bytes) {
+            match self.scanner.lock().unwrap().write_memory(addr, &bytes) {
                 Ok(_) => {}
                 Err(e) => {
                     self.err = Some(format!("Failed to set memory at 0x{:x}: {}", addr, e));
@@ -189,7 +221,7 @@ impl Smem {
             loop {
                 for &addr in &scan_results {
                     if let Ok(mut scanner) = scanner.lock() {
-                        if let Err(e) = scanner.set_memory(addr, &bytes) {
+                        if let Err(e) = scanner.write_memory(addr, &bytes) {
                             eprintln!("Failed to set memory at 0x{:x}: {}", addr, e);
                         }
                     }
@@ -200,31 +232,6 @@ impl Smem {
     }
 
     fn is_scanned(&self) -> bool { !self.scan_history.is_empty() }
-
-    fn ui_window_set_popup(&self, ctx: &egui::Context, resp: &egui::Response, row_start: usize) {
-        if resp.clicked_by(egui::PointerButton::Primary) {
-            if let Some(pos) = resp.interact_pointer_pos() {
-                let window_pos = egui::pos2(pos.x, pos.y - 10.0);
-                let mut input_value = String::new();
-                egui::Window::new("Memory Editor")
-                    .default_pos(window_pos)
-                    .show(ctx, |ui| {
-                        ui.horizontal(|ui| {
-                            ui.label("Value:");
-                            ui.text_edit_singleline(&mut input_value);
-                        });
-                        if ui.button("Set").clicked() {
-                            if let Ok(value_bytes) = hex::decode(input_value) {
-                                if let Ok(mut scanner) = self.scanner.lock() {
-                                    let _ = scanner.set_memory(row_start, &value_bytes);
-                                }
-                            }
-                            ui.close_menu();
-                        }
-                    });
-            }                           
-        }
-    }
 
     fn ui_window_tooltip(&self, ctx: &egui::Context, id: egui::Id, row_start: usize, rect: egui::Rect, resp: &egui::Response, buf: &[u8], zoom: f32) {
         if resp.hovered() {
@@ -243,7 +250,7 @@ impl Smem {
                         ));
                     }
                 }
-            });                               
+            });
         }
     }
 }
@@ -273,23 +280,31 @@ impl App for Smem {
         });
 
         egui::Window::new("Scan").anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 8.0)).resizable(false).default_open(false).show(ctx, |ui| {
-            ui.add_sized([ui.available_width(), 0.0], egui::TextEdit::singleline(&mut self.scan_value));
             ui.horizontal(|ui| {
-                egui::ComboBox::from_label("Mode").selected_text(&self.scan_mode).show_ui(ui, |ui| {
+                ui.add_sized([ui.available_width() * 0.4, 0.0], egui::TextEdit::singleline(&mut self.scan_value));
+                ui.horizontal(|ui| {
+                    if ui.button("Set").clicked() { self.address_set(); }
+                    if ui.button("Lock").clicked() { self.address_set_lock(); }
+                    if self.is_attached {
+                        if ui.button("Detach").clicked() { self.detach(); }
+                    } else {
+                        if ui.button("Attach").clicked() { self.attach(); }
+                    }
+                });
+            });
+            ui.horizontal(|ui| {
+                egui::ComboBox::new("scan_mode", "")
+                .width(135.0)
+                .selected_text(&self.scan_mode)
+                .show_ui(ui, |ui| {
                     for mode in ["Exact", "Changed", "Unchanged", "Increased", "Increased or Greater", "Increased by", "Decreased", "Decreased or Less", "Decreased by"] {
                         ui.selectable_value(&mut self.scan_mode, mode.to_string(), mode);
                     }
                 });
+                ui.add_space(-7.5);
                 if ui.button("Next").clicked() { self.do_scan(); }
-                if ui.button("Previous").clicked() { self.previous_scan(); }
+                if ui.button("Prev").clicked() { self.previous_scan(); }
                 if ui.button("Reset").clicked() { self.reset_scan(); }
-                if ui.button("Set").clicked() { self.address_set(); }
-                if ui.button("Lock").clicked() { self.address_set_lock(); }
-                if self.is_attached {
-                    if ui.button("Detach").clicked() { self.detach(); }
-                } else {
-                    if ui.button("Attach").clicked() { self.attach(); }
-                }
             });
             if let Some(e) = &self.err { ui.colored_label(egui::Color32::RED, e); }
         });
@@ -357,7 +372,6 @@ impl App for Smem {
                                     ui.ctx().output_mut(|o| o.copied_text = format!("0x{:x}", row_start));
                                 }
                                 self.ui_window_tooltip(ui.ctx(), egui::Id::new(row_start), row_start, rect, &resp, &buf, self.zoom);
-                                //self.ui_window_set_popup(ctx, &resp, row_start);
                             }
                             current_x += width_px;
                         }
@@ -366,7 +380,7 @@ impl App for Smem {
                     }
                     if current_x > 0.0 {
                         current_y += cell_height;
-                    }           
+                    }
                 } else {
                     let enabled_groups: Vec<_> = self.groups.iter().filter(|g| g.enabled).cloned().collect();
                     for g in enabled_groups {
@@ -391,7 +405,6 @@ impl App for Smem {
                                     if resp.clicked_by(egui::PointerButton::Secondary) {
                                         ui.ctx().output_mut(|o| o.copied_text = format!("0x{:x}", row_start));
                                     }
-                                    //self.ui_window_set_popup(ctx, &resp, row_start);
                                     self.ui_window_tooltip(ui.ctx(), egui::Id::new(row_start), row_start, rect, &resp, &buf, self.zoom);
                                 }
                             }
@@ -399,7 +412,7 @@ impl App for Smem {
                     }
                 }
             });
-        });        
+        });
         
     }
 }

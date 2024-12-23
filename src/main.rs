@@ -1,5 +1,7 @@
 #![allow(unused)]
 
+//TODO left click to set value single address
+
 use eframe::NativeOptions;    
 
 mod types;

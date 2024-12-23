@@ -37,7 +37,7 @@ impl MemoryScanner {
         }
     }
 
-    pub fn set_memory(&mut self, addr: usize, value: &[u8]) -> io::Result<()> {
+    pub fn write_memory(&mut self, addr: usize, value: &[u8]) -> io::Result<()> {
         if let Some(ref mut file) = self.mem_file {
             file.seek(SeekFrom::Start(addr as u64))?;
             file.write_all(value)?;
