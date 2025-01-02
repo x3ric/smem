@@ -1,3 +1,7 @@
+
+//TODO allinone scanning for all types if no prefix specified or all: prefix
+//TODO move ui.rs scan fn into scan.rs
+
 use eframe::{egui, App, Frame};
 use std::{
     collections::HashMap,
@@ -6,6 +10,7 @@ use std::{
     thread,
     time::Duration,
 };
+
 use crate::types::{ValueType, MemoryRegion, RegionGroup};
 use crate::scan::MemoryScanner;
 
@@ -18,6 +23,7 @@ pub struct Smem {
     scan_value: String,
     scan_mode: String,
     scan_history: Vec<HashMap<usize, ValueType>>,
+    scan_types_history: Vec<HashMap<usize, (ValueType, String)>>,
     scan_results: Vec<usize>,
 }
 
@@ -33,6 +39,7 @@ impl Smem {
             scan_value: "0".to_string(),
             scan_mode: "Changed".to_string(),
             scan_history: vec![],
+            scan_types_history: vec![],
             scan_results: vec![],
         };
         if let Err(e) = this.init() {
@@ -47,8 +54,6 @@ impl Smem {
         scanner.attach()?;
         Ok(())
     }
-
-    fn color(byte: u8) -> egui::Color32 { egui::Color32::from_gray((byte as f32 * 0.8) as u8) }
     
     pub fn first_scan(&mut self) -> Result<(), String> {
         let val = ValueType::parse_user_value(&self.scan_value)
@@ -78,10 +83,16 @@ impl Smem {
                                 let address = region.start + chunk_start;
                                 if self.scan_mode == "Exact" {
                                     if value.equals(&val) {
-                                        baseline.insert(address, value);
+                                        baseline.insert(
+                                            address,
+                                            (value, ValueType::type_to_string(type_hint).to_string()),
+                                        );
                                     }
                                 } else {
-                                    baseline.insert(address, value);
+                                    baseline.insert(
+                                        address,
+                                        (value, ValueType::type_to_string(type_hint).to_string()),
+                                    );
                                 }
                             }
                         }
@@ -91,39 +102,49 @@ impl Smem {
         } else {
             return Err("Failed to lock scanner.".to_string());
         }
-        self.scan_history.clear();
-        self.scan_history.push(baseline.clone());
+        self.scan_types_history.push(baseline.clone());
+        self.scan_history.push(
+            baseline.iter().map(|(&k, (v, _))| (k, v.clone())).collect(),
+        );
         self.scan_results = baseline.keys().copied().collect();
         Ok(())
-    }    
-
+    }
+    
     pub fn next_scan(&mut self) -> Result<(), String> {
-        if self.scan_history.is_empty() { return self.first_scan(); }
+        if self.scan_history.is_empty() {
+            return self.first_scan();
+        }
         let val = ValueType::parse_user_value(&self.scan_value).ok_or("Failed to parse scan value.")?;
         let scan_types = ValueType::scan_types(&val);
-        let prev_map = self.scan_history.last().unwrap().clone();
+        let prev_map = self.scan_types_history.last().unwrap().clone();
         let mut new_map = HashMap::new();
         if let Ok(mut scanner) = self.scanner.lock() {
-            for (&addr, old_val) in &prev_map {
+            for (&addr, (old_val, old_type)) in &prev_map {
                 for type_hint in &scan_types {
                     let byte_size = ValueType::type_size(type_hint);
                     if let Ok(buffer) = scanner.read_memory(addr, byte_size) {
                         if buffer.len() == byte_size {
                             let new_value = ValueType::from_bytes(buffer.to_vec(), type_hint.clone());
-                            if ValueType::comparator(&self.scan_mode, old_val, &new_value, &val) {
-                                new_map.insert(addr, new_value);
+                            if ValueType::comparator(&self.scan_mode, &old_val, &new_value, &val) {
+                                new_map.insert(
+                                    addr,
+                                    (new_value, ValueType::type_to_string(type_hint).to_string()),
+                                );
                             }
                         }
                     }
                 }
             }
         } else {
-            return Err("Failed to lock scanner".to_string());
+            return Err("Failed to lock scanner.".to_string());
         }
-        self.scan_history.push(new_map.clone());
+        self.scan_types_history.push(new_map.clone());
+        self.scan_history.push(
+            new_map.iter().map(|(&k, (v, _))| (k, v.clone())).collect(),
+        );
         self.scan_results = new_map.keys().copied().collect();
         Ok(())
-    }
+    }    
 
     fn scan(&mut self) {
         let r = if self.scan_history.is_empty() { self.first_scan() } else { self.next_scan() };
@@ -188,8 +209,14 @@ impl Smem {
             }
         });
     }
+}
 
+//TODO left click to set value single address
+
+impl Smem {
     fn is_scanned(&self) -> bool { !self.scan_history.is_empty() }
+    
+    fn color(byte: u8) -> egui::Color32 { egui::Color32::from_gray((byte as f32 * 0.8) as u8) }
 
     fn handle_key_input(&mut self, ctx: &egui::Context) {
         ctx.input(|i| {
@@ -214,20 +241,29 @@ impl Smem {
     fn draw_tooltip(&self, ctx: &egui::Context, id: egui::Id, row_start: usize, rect: egui::Rect, resp: &egui::Response, buf: &[u8], zoom: f32) {
         if resp.hovered() {
             egui::show_tooltip(ctx, id, |ui| {
-                ui.label(format!("Base: 0x{:X}", row_start));
+                ui.label(format!("0x{:X}", row_start));
                 if let Some(pos) = resp.hover_pos() {
                     let rel_x = pos.x - rect.min.x;
                     let col = (rel_x / (6.0 * zoom)).floor() as usize;
                     if col < buf.len() {
-                        let val = buf[col];
-                        ui.label(format!("Hex: 0x{:02X}", val));
-                        ui.label(format!("Dec: {}", val));
-                        ui.label(format!("Char: {}", if val.is_ascii_graphic() { val as char } else { '.' }));
+                        let byte_addr = row_start + col;
+                        if let Some((_, type_str)) = self.scan_types_history.last().and_then(|history| history.get(&byte_addr)) {
+                            if let Some(type_hint) = ValueType::string_to_type(type_str) {
+                                let value_size = ValueType::type_size(&type_hint);
+                                if col + value_size <= buf.len() {
+                                    let value_bytes = &buf[col..col + value_size];
+                                    let interpreted_value = ValueType::from_bytes(value_bytes.to_vec(), type_hint.clone());
+                                    ui.label(format!("{:?}", interpreted_value));
+                                }
+                            }
+                        } else {
+                            ui.label(format!("Hex: 0x{:02X}, Dec: {}", buf[col], buf[col]));
+                        }
                     }
                 }
             });
         }
-    }
+    }    
 
     fn draw_scan(&mut self, ctx: &egui::Context) {
         egui::Window::new("Scan").anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 8.0)).resizable(false).default_open(false).show(ctx, |ui| {
@@ -291,78 +327,72 @@ impl Smem {
             }
             ui.style_mut().spacing.item_spacing.y = 0.0;
             egui::ScrollArea::vertical().drag_to_scroll(true).show(ui, |ui| {
+                let cell_height = 6.0 * self.zoom;
                 if self.is_scanned() && !self.scan_results.is_empty() {
-                    let mut sorted = self.scan_results.clone();
+                    let latest_history = self.scan_types_history.last().unwrap();
+                    let mut merged = vec![];
+                    let mut sorted: Vec<_> = latest_history.keys().cloned().collect();
                     sorted.sort_unstable();
-                    let mut merged = Vec::new();
                     let mut start = sorted[0];
-                    let mut end = start + 4;
-                    for &a in &sorted[1..] {
-                        if a <= end {
-                            end = a + 4;
-                        } else {
-                            merged.push(MemoryRegion { start, end });
-                            start = a;
-                            end = a + 4;
-                        }
+                    let mut end = start + ValueType::type_size(&latest_history[&start].0);
+                    for &addr in &sorted[1..] {
+                        let size = ValueType::type_size(&latest_history[&addr].0);
+                        if addr <= end { end = addr + size; } 
+                        else { merged.push(MemoryRegion { start, end }); start = addr; end = addr + size; }
                     }
                     merged.push(MemoryRegion { start, end });
                     ui.label(format!("Results: {}", merged.len()));
-                    let bytes_per_row = (ui.available_width() / (6.0 * self.zoom)).floor() as usize;
-                    let cell_height = 6.0 * self.zoom;
+                    let block_width = 6.0 * self.zoom;
+                    let block_height = 6.0 * self.zoom;
                     let mut current_x = 0.0;
                     let mut current_y = 0.0;
-                    for m in &merged {
-                        let size = m.end.saturating_sub(m.start);
-                        let rows = (size + bytes_per_row - 1) / bytes_per_row;
-                        for row in 0..rows {
-                            let row_start = m.start + row * bytes_per_row;
-                            let row_end = (row_start + bytes_per_row).min(m.end);
-                            let width_px = (row_end - row_start) as f32 * (6.0 * self.zoom);   
-                            if current_x + width_px > ui.available_width() {
+                    let available_width = ui.available_width();
+                    for region in &merged {
+                        for addr in region.start..region.end {
+                            if current_x + block_width > available_width {
                                 current_x = 0.0;
-                                current_y += cell_height;
+                                current_y += block_height;
                             }
-                            let (rect, resp) = ui.allocate_exact_size(egui::vec2(width_px, cell_height), egui::Sense::click());
-                            if let Ok(buf) = self.scanner.lock().unwrap().read_memory(row_start, row_end - row_start) {
-                                let paint = ui.painter_at(rect);
-                                for (i, &byte) in buf.iter().enumerate() {
-                                    let x = rect.min.x + i as f32 * (6.0 * self.zoom);
-                                    paint.rect_filled(egui::Rect::from_min_size(egui::pos2(x, rect.min.y), egui::vec2(6.0 * self.zoom, 6.0 * self.zoom)), 0.0, Self::color(byte));
-                                }
-                                if resp.clicked_by(egui::PointerButton::Secondary) { ui.ctx().output_mut(|o| o.copied_text = format!("0x{:x}", row_start)); }
-                                self.draw_tooltip(ui.ctx(), egui::Id::new(row_start), row_start, rect, &resp, &buf, self.zoom);
+                            let rect = egui::Rect::from_min_size(
+                                egui::pos2(current_x, current_y),
+                                egui::vec2(block_width, block_height),
+                            );
+                            let (rect, resp) = ui.allocate_exact_size(egui::vec2(block_width, block_height), egui::Sense::click());
+                            if let Some((value, _)) = latest_history.get(&addr) {
+                                ui.painter().rect_filled(rect, 0.0, Self::color(value.to_bytes()[0]));
                             }
-                            current_x += width_px;
+                            if resp.hovered() {
+                                ui.ctx().output_mut(|o| o.copied_text = format!("0x{:x}", addr));
+                                self.draw_tooltip(ui.ctx(), egui::Id::new(addr), addr, rect, &resp, &[], self.zoom);
+                            }
+                            current_x += block_width;
                         }
-                        current_x = 0.0;
-                        current_y += cell_height;
-                    }
-                    if current_x > 0.0 {
-                        current_y += cell_height;
-                    }
+                    }             
                 } else {
-                    let enabled_groups: Vec<_> = self.groups.iter().filter(|g| g.enabled).cloned().collect();
-                    for g in enabled_groups {
-                        ui.heading(&g.name);
-                        for r in &g.regions {
-                            ui.label(format!("{:x}-{:x}", r.start, r.end));
-                            let size = r.end.saturating_sub(r.start);
-                            let bpr = (ui.available_width() / (6.0 * self.zoom)).floor() as usize;
-                            let rows = (size + bpr - 1) / bpr;
+                    for group in self.groups.iter().filter(|g| g.enabled) {
+                        ui.heading(&group.name);
+                        for region in &group.regions {
+                            ui.label(format!("{:x}-{:x}", region.start, region.end));
+                            let size = region.end.saturating_sub(region.start);
+                            let bytes_per_row = (ui.available_width() / (6.0 * self.zoom)).floor() as usize;
+                            let rows = (size + bytes_per_row - 1) / bytes_per_row;
                             for row in 0..rows {
-                                let row_start = r.start + row * bpr;
-                                let row_end = (row_start + bpr).min(r.end);
+                                let row_start = region.start + row * bytes_per_row;
+                                let row_end = (row_start + bytes_per_row).min(region.end);
                                 let width_px = (row_end - row_start) as f32 * (6.0 * self.zoom);
-                                let (rect, resp) = ui.allocate_exact_size(egui::vec2(width_px, 6.0 * self.zoom), egui::Sense::click());
-                                if !ui.is_rect_visible(rect) { continue; }
+                                let (rect, resp) = ui.allocate_exact_size(egui::vec2(width_px, cell_height), egui::Sense::click());
+                                if !ui.is_rect_visible(rect) {
+                                    continue;
+                                }
                                 if let Ok(buf) = self.scanner.lock().unwrap().read_memory(row_start, row_end - row_start) {
                                     let paint = ui.painter_at(rect);
-                                    for (i, &byte) in buf.iter().enumerate() {
+                                    buf.iter().enumerate().for_each(|(i, &byte)| {
                                         let x = rect.min.x + i as f32 * (6.0 * self.zoom);
                                         paint.rect_filled(egui::Rect::from_min_size(egui::pos2(x, rect.min.y), egui::vec2(6.0 * self.zoom, 6.0 * self.zoom)), 0.0, Self::color(byte));
+                                    });
+                                    if resp.clicked_by(egui::PointerButton::Secondary) {
+                                        ui.ctx().output_mut(|o| o.copied_text = format!("0x{:x}", row_start));
                                     }
-                                    if resp.clicked_by(egui::PointerButton::Secondary) { ui.ctx().output_mut(|o| o.copied_text = format!("0x{:x}", row_start)); }
                                     self.draw_tooltip(ui.ctx(), egui::Id::new(row_start), row_start, rect, &resp, &buf, self.zoom);
                                 }
                             }

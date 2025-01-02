@@ -1,52 +1,59 @@
 # smem
 
-**smem** is a memory scanning and visualization tool written in Rust, utilizing the `eframe` and `egui` crates for a modern graphical user interface. With **smem**, users can attach to processes, scan memory regions, and visualize or modify memory values in real-time.
+**smem** is a memory scanning and visualization tool built in Rust, utilizing `eframe` and `egui` for a modern graphical interface. It allows users to attach to processes, scan memory regions, and visualize or modify memory values in real time.
 
-## Features
+## Features  
 
-**Memory Operations:**
-- **Attach/Detach**: Interface with process memory via `/proc/<pid>/mem`.
-- **Read/Write**: Modify and access memory regions directly.
-- **Visualization**: Dynamically display memory regions.
+### **Memory Operations**  
+- **Attach/Detach**: Connect or disconnect from a process memory using `/proc/<pid>/mem`.  
+- **Read/Write**: Directly access and modify memory regions.  
+- **Visualization**: Dynamically display and interact with memory regions.  
 
-**Scanning Functions:**
-- **Exact Match**: Search for exact numerical matches.
-- **Value Changes**: Track modifications in memory values.
-- **Trends**: Detect trends such as value increases or decreases.
-- **Continuous Monitoring**: Automatically update monitored values.
+### **Scanning Functions**  
+- **Exact Match**: Search for specific numerical values.  
+- **Value Changes**: Detect modifications in memory values.  
+- **Trends**: Identify increasing or decreasing value patterns.  
 
-**User Interface and Controls:**
-- **Clipboard Interaction**: Right-click to copy a memory address.
-- **Functional Keys**:
-  - **F1**: Connect to a process by its ID.
-  - **F2**: Commence a memory scan.
-  - **F3**: Access previous scan results.
-  - **F4**: Reset scanning configurations.
-  - **F5**: Target a specific memory address for operations.
-  - **F7**: Lock onto a memory address for ongoing updates.
-  - **F8-F10**: Activate scans for changes, increases, or decreases.
-  - **F11/F12**: Scale the visualization size up or down.
+### **User Interface and Controls**  
+- **Clipboard Interaction**: Right-click on a memory address to copy it.  
+- **Functional Keys**:  
+  - **F1**: Attach or detach to a process by ID.  
+  - **F2**: Start a memory scan.  
+  - **F3**: View previous scan results.  
+  - **F4**: Reset scan configurations.  
+  - **F5**: Focus on a specific memory address.  
+  - **F7**: Lock and continuously update a memory address.  
+  - **F8-F10**: Trigger scans for changes, increases, or decreases.  
+  - **F11/F12**: Adjust the visualization scale.  
 
-**Input Value:**
-- **`b<value>`**: Parses the value as a byte.
-- **`0x<hex_value>`**: Interprets the value as a hexadecimal number.
-- **`d<decimal_value>`**: Treats the value as a double.
-- **`<value>`**: Assumes the value is an integer or float.
+### **Input Value Parsing**  
+**smem** supports prefixes for type-specific parsing:  
+- **`bool:<value>`**: Boolean, e.g., `bool:true`.  
+- **`byte:<value>`**: 8-bit unsigned integer (`UInt8`), e.g., `byte:255`.  
+- **`hex:<value>`**: Hexadecimal, auto-converted to the smallest unsigned type, e.g., `hex:FF`.  
+- **`int8:<value>`**, **`int16:<value>`**, **`int32:<value>`**, **`int64:<value>`**: Signed integers, e.g., `int16:32767`.  
+- **`float32:<value>`**, **`float64:<value>`**: Floating-point numbers, e.g., `float32:3.14`.  
+- **`size:<value>`**: Platform-specific unsigned size, e.g., `size:1024`.  
+- **`ptr:<value>`**: Pointer, e.g., `ptr:0x1000`.  
 
-## Requirements
+**Default (`<value>`)**: If no prefix is provided, values are parsed as signed integers (`Int8`, `Int16`, `Int32`, `Int64`) or floats (`Float32`, `Float64`):  
+- `42`  
+- `3.14159`  
 
-- **Rust** (1.70 or later recommended)
-- Linux (requires `/proc` filesystem support)
-- Root permissions (to access process memory)
+## Requirements  
 
-## Installation
+- **Rust** (1.70 or later recommended)  
+- Linux (requires `/proc` filesystem support)  
+- Root permissions (to access process memory)  
 
-Clone the repository and run the application directly:
+## Installation  
+
+Clone the repository and run the application directly:  
 
 ```bash
 git clone https://github.com/x3ric/smem.git
 cd smem
 sudo cargo run -- "$(pidof test | awk '{print $1}')"
-```
+```  
 
 ![Image](./img.png)
