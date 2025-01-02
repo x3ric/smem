@@ -1,6 +1,4 @@
-
-//TODO allinone scanning for all types if no prefix specified or all: prefix
-//TODO move ui.rs scan fn into scan.rs
+//TODO Move ui.rs Scanning functions into scan.rs
 
 use eframe::{egui, App, Frame};
 use std::{
@@ -19,7 +17,9 @@ pub struct Smem {
     groups: Vec<RegionGroup>,
     err: Option<String>,
     zoom: f32,
+    is_regions_open: bool,
     selected_region: Option<String>,
+    is_scan_open: bool,
     scan_value: String,
     scan_mode: String,
     scan_history: Vec<HashMap<usize, ValueType>>,
@@ -35,9 +35,11 @@ impl Smem {
             groups: vec![],
             err: None,
             zoom: 1.0,
+            is_regions_open: true,
             selected_region: None,
+            is_scan_open: true,
             scan_value: "0".to_string(),
-            scan_mode: "Changed".to_string(),
+            scan_mode: "Exact".to_string(),
             scan_history: vec![],
             scan_types_history: vec![],
             scan_results: vec![],
@@ -211,7 +213,8 @@ impl Smem {
     }
 }
 
-//TODO left click to set value single address
+//TODO Left Click to set value single address.
+//TODO Navigate from results to memory regions, enabling exploration of adjacent values for deeper analysis or pattern identification.
 
 impl Smem {
     fn is_scanned(&self) -> bool { !self.scan_history.is_empty() }
@@ -235,6 +238,8 @@ impl Smem {
             if i.key_pressed(egui::Key::F10) { self.scan_mode = "Decreased".to_string(); self.scan(); }
             if i.key_pressed(egui::Key::F11) { self.zoom = (self.zoom / 1.1).clamp(0.2, 8.0); }
             if i.key_pressed(egui::Key::F12) { self.zoom = (self.zoom * 1.1).clamp(0.2, 8.0); }
+            if i.key_pressed(egui::Key::S) { self.is_scan_open = !self.is_scan_open; }
+            if i.key_pressed(egui::Key::R) { self.is_regions_open = !self.is_regions_open; }
         });
     }
 
@@ -266,57 +271,54 @@ impl Smem {
     }    
 
     fn draw_scan(&mut self, ctx: &egui::Context) {
-        egui::Window::new("Scan").anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 8.0)).resizable(false).default_open(false).show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                ui.add_sized([ui.available_width() * 0.4, 0.0], egui::TextEdit::singleline(&mut self.scan_value));
+        let mut is_scan_open = self.is_scan_open;
+        if self.is_scan_open {
+            egui::Window::new("Scan").anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 8.0)).resizable(false).default_open(false).show(ctx, |ui| {
                 ui.horizontal(|ui| {
+                    ui.add_sized([ui.available_width() * 0.4, 0.0], egui::TextEdit::singleline(&mut self.scan_value));
                     if ui.button("Set").clicked() { self.address_set(); }
                     if ui.button("Lock").clicked() { self.address_set_lock(); }
                     if let Ok(mut scanner) = self.scanner.lock() {
-                        if scanner.is_attached {
-                            if ui.button("Detach").clicked() {
-                                scanner.detach();
-                            }
-                        } else {
-                            if ui.button("Attach").clicked() {
-                                scanner.attach();
-                            }
+                        if ui.button(if scanner.is_attached { "Detach" } else { "Attach" }).clicked() {
+                            if scanner.is_attached { scanner.detach(); } else { scanner.attach(); }
                         }
                     }
                 });
+                ui.horizontal(|ui| {
+                    egui::ComboBox::new("scan_mode", "")
+                        .width(135.0)
+                        .selected_text(&self.scan_mode)
+                        .show_ui(ui, |ui| {
+                            for mode in ["Exact", "Changed", "Unchanged", "Increased", "Increased or Greater", "Increased by", "Decreased", "Decreased or Less", "Decreased by"] {
+                                ui.selectable_value(&mut self.scan_mode, mode.to_string(), mode);
+                            }
+                        });
+                    if ui.button("Next").clicked() { self.scan(); }
+                    if ui.button("Prev").clicked() { self.previous_scan(); }
+                    if ui.button("Reset").clicked() { self.reset_scan(); }
+                });
+                if let Some(e) = &self.err { ui.colored_label(egui::Color32::RED, e); }
             });
-            ui.horizontal(|ui| {
-                egui::ComboBox::new("scan_mode", "")
-                    .width(135.0)
-                    .selected_text(&self.scan_mode)
-                    .show_ui(ui, |ui| {
-                        for mode in [ "Exact", "Changed", "Unchanged", "Increased", "Increased or Greater", "Increased by", "Decreased", "Decreased or Less", "Decreased by" ] {
-                            ui.selectable_value(&mut self.scan_mode, mode.to_string(), mode);
-                        }
-                    });
-                ui.add_space(-7.5);
-                if ui.button("Next").clicked() { self.scan(); }
-                if ui.button("Prev").clicked() { self.previous_scan(); }
-                if ui.button("Reset").clicked() { self.reset_scan(); }
-            });
-            if let Some(e) = &self.err { ui.colored_label(egui::Color32::RED, e); }
-        });
-    }
+        }
+    }    
 
     fn draw_regions(&mut self, ctx: &egui::Context) {
-        egui::Window::new("Regions").anchor(egui::Align2::RIGHT_TOP, egui::vec2(-25.0, 8.0)).resizable(false).default_open(false).show(ctx, |ui| {
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                for g in &mut self.groups {
-                    ui.horizontal(|ui| {
-                        ui.checkbox(&mut g.enabled, "");
-                        if ui.selectable_label(self.selected_region.as_deref() == Some(&g.name), &g.name).clicked()
-                        {
-                            self.selected_region = Some(g.name.clone());
-                        }
-                    });
-                }
+        let mut is_regions_open = self.is_regions_open;
+        if self.is_regions_open {
+            egui::Window::new("Regions").anchor(egui::Align2::RIGHT_TOP, egui::vec2(-25.0, 8.0)).resizable(false).default_open(false).show(ctx, |ui| {
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    for g in &mut self.groups {
+                        ui.horizontal(|ui| {
+                            ui.checkbox(&mut g.enabled, "");
+                            if ui.selectable_label(self.selected_region.as_deref() == Some(&g.name), &g.name).clicked()
+                            {
+                                self.selected_region = Some(g.name.clone());
+                            }
+                        });
+                    }
+                });
             });
-        });
+        }
     }
 
     fn draw_maps(&mut self, ctx: &egui::Context) {

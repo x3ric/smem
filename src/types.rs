@@ -252,22 +252,22 @@ impl ValueType {
     pub fn parse_user_value(input: &str) -> Option<ValueType> {
         let trimmed = input.trim();
         match trimmed.split_once(':') {
-            Some(("bool", v)) => v.parse().ok().map(ValueType::Bool),
-            Some(("byte", v)) => v.parse().ok().map(ValueType::UInt8),
-            Some(("hex", v)) => u64::from_str_radix(v, 16).ok().map(|i| match i {
+            Some(("bool" | "boolean", v)) => v.parse().ok().map(ValueType::Bool),
+            Some(("byte" | "b", v)) => v.parse().ok().map(ValueType::UInt8),
+            Some(("hex"  | "h", v)) => u64::from_str_radix(v, 16).ok().map(|i| match i {
                 i if i <= u8::MAX as u64 => ValueType::UInt8(i as u8),
                 i if i <= u16::MAX as u64 => ValueType::UInt16(i as u16),
                 i if i <= u32::MAX as u64 => ValueType::UInt32(i as u32),
                 i => ValueType::UInt64(i),
             }),
-            Some(("int8", v)) => v.parse().ok().map(ValueType::Int8),
-            Some(("int16", v)) => v.parse().ok().map(ValueType::Int16),
-            Some(("int32", v)) => v.parse().ok().map(ValueType::Int32),
-            Some(("int64", v)) => v.parse().ok().map(ValueType::Int64),
-            Some(("float32", v)) => v.parse().ok().map(ValueType::Float32),
-            Some(("float64", v)) => v.parse().ok().map(ValueType::Float64),
-            Some(("size", v)) => v.parse().ok().map(ValueType::Size),
-            Some(("ptr", v)) => v.parse().ok().map(ValueType::Pointer),
+            Some(("int8"    | "i8"  | "char", v)) => v.parse().ok().map(ValueType::Int8),
+            Some(("int16"   | "i16" | "short", v)) => v.parse().ok().map(ValueType::Int16),
+            Some(("int32"   | "i32" | "int", v)) => v.parse().ok().map(ValueType::Int32),
+            Some(("int64"   | "i64" | "long", v)) => v.parse().ok().map(ValueType::Int64),
+            Some(("float32" | "f32" | "float", v)) => v.parse().ok().map(ValueType::Float32),
+            Some(("float64" | "f64" | "double", v)) => v.parse().ok().map(ValueType::Float64),
+            Some(("size"    | "s", v)) => v.parse().ok().map(ValueType::Size),
+            Some(("ptr"     | "pointer", v)) => v.parse().ok().map(ValueType::Pointer),
             _ => trimmed.parse::<i64>().ok().map(|n| match n {
                 n if n >= i8::MIN as i64 && n <= i8::MAX as i64 => ValueType::Int8(n as i8),
                 n if n >= i16::MIN as i64 && n <= i16::MAX as i64 => ValueType::Int16(n as i16),

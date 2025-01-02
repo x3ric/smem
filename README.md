@@ -17,6 +17,8 @@
 ### **User Interface and Controls**  
 - **Clipboard Interaction**: Right-click on a memory address to copy it.  
 - **Functional Keys**:  
+  - **S**: Toggle scan window.
+  - **R**: Toggle region window.
   - **F1**: Attach or detach to a process by ID.  
   - **F2**: Start a memory scan.  
   - **F3**: View previous scan results.  
