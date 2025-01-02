@@ -305,18 +305,18 @@ impl Smem {
 
     fn draw_regions(&mut self, ctx: &egui::Context) {
         egui::Window::new("Regions").anchor(egui::Align2::RIGHT_TOP, egui::vec2(-25.0, 8.0)).resizable(false).default_open(false).show(ctx, |ui| {
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    for g in &mut self.groups {
-                        ui.horizontal(|ui| {
-                            ui.checkbox(&mut g.enabled, "");
-                            if ui.selectable_label(self.selected_region.as_deref() == Some(&g.name), &g.name).clicked()
-                            {
-                                self.selected_region = Some(g.name.clone());
-                            }
-                        });
-                    }
-                });
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                for g in &mut self.groups {
+                    ui.horizontal(|ui| {
+                        ui.checkbox(&mut g.enabled, "");
+                        if ui.selectable_label(self.selected_region.as_deref() == Some(&g.name), &g.name).clicked()
+                        {
+                            self.selected_region = Some(g.name.clone());
+                        }
+                    });
+                }
             });
+        });
     }
 
     fn draw_maps(&mut self, ctx: &egui::Context) {
@@ -337,8 +337,13 @@ impl Smem {
                     let mut end = start + ValueType::type_size(&latest_history[&start].0);
                     for &addr in &sorted[1..] {
                         let size = ValueType::type_size(&latest_history[&addr].0);
-                        if addr <= end { end = addr + size; } 
-                        else { merged.push(MemoryRegion { start, end }); start = addr; end = addr + size; }
+                        if addr <= end {
+                            end = addr + size;
+                        } else {
+                            merged.push(MemoryRegion { start, end });
+                            start = addr;
+                            end = addr + size;
+                        }
                     }
                     merged.push(MemoryRegion { start, end });
                     ui.label(format!("Results: {}", merged.len()));
@@ -348,7 +353,9 @@ impl Smem {
                     let mut current_y = 0.0;
                     let available_width = ui.available_width();
                     for region in &merged {
-                        for addr in region.start..region.end {
+                        let mut addr = region.start;
+                        while addr < region.end {
+                            let size = ValueType::type_size(&latest_history[&addr].0);
                             if current_x + block_width > available_width {
                                 current_x = 0.0;
                                 current_y += block_height;
@@ -358,16 +365,21 @@ impl Smem {
                                 egui::vec2(block_width, block_height),
                             );
                             let (rect, resp) = ui.allocate_exact_size(egui::vec2(block_width, block_height), egui::Sense::click());
-                            if let Some((value, _)) = latest_history.get(&addr) {
-                                ui.painter().rect_filled(rect, 0.0, Self::color(value.to_bytes()[0]));
+                            if let Ok(buffer) = self.scanner.lock().unwrap().read_memory(addr, size) {
+                                if let Some((value, _)) = latest_history.get(&addr) {
+                                    ui.painter().rect_filled(rect, 0.0, Self::color(buffer[0]));
+                                }
+                                if resp.hovered() {
+                                    if resp.clicked_by(egui::PointerButton::Secondary) {
+                                        ui.ctx().output_mut(|o| o.copied_text = format!("0x{:x}", addr));
+                                    }
+                                    self.draw_tooltip(ui.ctx(), egui::Id::new(addr), addr, rect, &resp, &buffer, self.zoom);
+                                }
                             }
-                            if resp.hovered() {
-                                ui.ctx().output_mut(|o| o.copied_text = format!("0x{:x}", addr));
-                                self.draw_tooltip(ui.ctx(), egui::Id::new(addr), addr, rect, &resp, &[], self.zoom);
-                            }
+                            addr += size;
                             current_x += block_width;
                         }
-                    }             
+                    }
                 } else {
                     for group in self.groups.iter().filter(|g| g.enabled) {
                         ui.heading(&group.name);
