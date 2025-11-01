@@ -1,17 +1,6 @@
-#![allow(unused)]
-
-use eframe::NativeOptions;    
-
-mod types;
-mod scan;
-mod ui;
-use crate::ui::Smem;
-
-fn main() {
-    let pid = std::env::args().nth(1).and_then(|x| x.parse().ok()).unwrap_or_else(|| {
-        eprintln!("Usage: {} <pid>", std::env::args().next().unwrap());
-        std::process::exit(1);
-    });
-    let app = Smem::new(pid);
-    eframe::run_native("Smem", NativeOptions::default(), Box::new(|_cc| Box::new(app)));
+mod scan; mod types; mod ui;
+fn main(){
+    let pid=std::env::args().nth(1).and_then(|s|s.parse::<i32>().ok()).unwrap_or(0);
+    let opt=eframe::NativeOptions::default();
+    eframe::run_native("smem",opt,Box::new(move|_|Box::new(ui::Smem::new(pid)))).ok();
 }
